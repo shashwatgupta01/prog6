@@ -6,6 +6,13 @@
     "configurations": [
         {
             "type": "java",
+            "name": "Demo",
+            "request": "launch",
+            "mainClass": "assignment.Demo",
+            "projectName": "prog6_5f0a6ba5"
+        },
+        {
+            "type": "java",
             "name": "Current File",
             "request": "launch",
             "mainClass": "${file}"
@@ -14,7 +21,7 @@
             "type": "java",
             "name": "BVHGUI",
             "request": "launch",
-            "mainClass": "assignment.GUI",
+            "mainClass": "assignment.GUI"
         }
     ]
 }
