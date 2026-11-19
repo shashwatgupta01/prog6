@@ -157,7 +157,7 @@ public class BoundedVolumeHierarchy implements BVH {
  
     //finds area of axis-aligned bounding box
     private static long area(int minX, int minY, int maxX, int maxY) {
-        return (long) (maxX - minX) * (long) (maxY - minY);
+        return ((long) maxX - minX) * ((long) maxY - minY);
     }
  
     private static long area(Node n) {
@@ -424,6 +424,13 @@ public class BoundedVolumeHierarchy implements BVH {
     private RayHit nearestHit(Point2D.Double origin, Vector2D direction) {
         RayHit best = new RayHit();
         if (root == null || origin == null || direction == null) {
+            return best;
+        }
+        double dx = direction.getX();
+        double dy = direction.getY();
+        if (!Double.isFinite(origin.x) || !Double.isFinite(origin.y)
+                || !Double.isFinite(dx) || !Double.isFinite(dy)
+                || (dx == 0 && dy == 0)) {
             return best;
         }
         Point intOrigin = new Point((int) Math.round(origin.x), (int) Math.round(origin.y)); //round origin to integer point for Shape.findIntersection()

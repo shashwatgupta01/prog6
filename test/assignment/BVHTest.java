@@ -263,4 +263,147 @@ public class BVHTest {
         assertTrue(shifted.contains(new Point(195, 300)) && shifted.contains(new Point(235, 260)));
         assertFalse(shifted.contains(new Point(240, 260)));
     }
+
+    @Test
+    void testBuildSkipsNullsAndDefaultsSplit() {
+        List<Shape> withNulls = new ArrayList<>();
+        withNulls.add(null);
+        for (Shape s : figure) {
+            withNulls.add(s);
+            withNulls.add(null);
+        }
+        bvh.setSplitMethod(BVH.SplitMethod.SPLIT_MIDRANGE);
+        bvh.setSplitMethod(null);
+        bvh.buildBVH(withNulls);
+        assertEquals(FIGURE_STRING, bvh.toString());
+
+        bvh.buildBVH(null);
+        assertEquals("", bvh.toString());
+    }
+
+    @Test
+    void testNullArgumentsAreIgnored() {
+        bvh.insert(null);
+        assertEquals("", bvh.toString());
+        bvh.remove(figure.get(0));
+        assertEquals("", bvh.toString());
+
+        bvh.buildBVH(figure);
+        bvh.insert(null);
+        bvh.remove(null);
+        assertEquals(FIGURE_STRING, bvh.toString());
+        assertTrue(bvh.findCollision(null).isEmpty());
+        assertNull(bvh.intersectRay(null, new Vector2D(1, 0)));
+        assertNull(bvh.intersectRay(pt(0, 0), null));
+    }
+
+    @Test
+    void testDuplicateShapes() {
+        Triangle a = tri(0, 0, 4, 0, 0, 4);
+        bvh.insert(a);
+        bvh.insert(a);
+        assertEquals(Set.of(a), bvh.findCollision(pt(1, 1)));
+
+        bvh.remove(a);
+        assertTrue(bvh.findCollision(pt(1, 1)).contains(a));
+        assertEquals("(0, 0) (4, 0) (0, 4)\n", bvh.toString());
+
+        bvh.remove(a);
+        assertEquals("", bvh.toString());
+    }
+
+    @Test
+    void testInsertPrefersLeafChild() {
+        Triangle a = tri(0, 0, 2, 0, 0, 2), b = tri(10, 0, 12, 0, 10, 2), c = tri(50, 0, 52, 0, 50, 2);
+        bvh.buildBVH(List.of(a, b, c));
+        bvh.insert(tri(1, 1, 2, 1, 1, 2));
+        assertEquals("[(0, 0), (52, 2)]\n"
+                + "\t[(0, 0), (12, 2)]\n"
+                + "\t\t(0, 0) (2, 0) (0, 2)\n"
+                + "\t\t(10, 0) (12, 0) (10, 2)\n"
+                + "\t[(1, 0), (52, 2)]\n"
+                + "\t\t(50, 0) (52, 0) (50, 2)\n"
+                + "\t\t(1, 1) (2, 1) (1, 2)\n", bvh.toString());
+    }
+
+    @Test
+    void testInsertPrefersSmallerGrowth() {
+        bvh.buildBVH(figure);
+        bvh.insert(tri(1, 1, 2, 1, 1, 2));
+        assertEquals("[(0, 0), (5, 5)]\n"
+                + "\t[(0, 0), (3, 5)]\n"
+                + "\t\t[(0, 0), (2, 2)]\n"
+                + "\t\t\t(0, 0) (1, 0) (1, 2)\n"
+                + "\t\t\t(1, 1) (2, 1) (1, 2)\n"
+                + "\t\t(1, 5) (2, 3) (3, 5)\n"
+                + "\t[(2, 1), (5, 5)]\n"
+                + "\t\t(2, 2) (3, 1) (4, 2)\n"
+                + "\t\t(4, 5) (5, 3) (5, 5)\n", bvh.toString());
+        assertTrue(bvh.isBalanced());
+    }
+
+    @Test
+    void testRemoveShrinksBoundingBoxes() {
+        bvh.buildBVH(figure);
+        bvh.remove(figure.get(3));
+        assertEquals("[(0, 0), (4, 5)]\n"
+                + "\t[(0, 0), (3, 5)]\n"
+                + "\t\t(0, 0) (1, 0) (1, 2)\n"
+                + "\t\t(1, 5) (2, 3) (3, 5)\n"
+                + "\t(2, 2) (3, 1) (4, 2)\n", bvh.toString());
+        assertTrue(bvh.isBalanced());
+    }
+
+    @Test
+    void testSortedInsertionStaysBalanced() {
+        List<Shape> shapes = new ArrayList<>();
+        for (int i = 0; i < 200; i++) {
+            Triangle t = tri(3 * i, 0, 3 * i + 2, 0, 3 * i, 2);
+            shapes.add(t);
+            bvh.insert(t);
+        }
+        assertTrue(bvh.isBalanced(), "tree is not AVL balanced");
+        int limit = 2 * (int) Math.ceil(Math.log(200) / Math.log(2));
+        assertTrue(bvh.getHeight() <= limit, "height " + bvh.getHeight() + " is above " + limit);
+        assertHasAll(shapes);
+    }
+
+    @Test
+    void testFindOverlappingBoundingBox() {
+        bvh.buildBVH(figure);
+        assertEquals(Set.of(figure.get(0)), new HashSet<>(bvh.findOverlappingBoundingBox(0, 0, 1, 1)));
+        assertEquals(Set.of(figure.get(0)), new HashSet<>(bvh.findOverlappingBoundingBox(1, 2, 1, 2)));
+        assertEquals(4, bvh.findOverlappingBoundingBox(-10, -10, 10, 10).size());
+        assertTrue(bvh.findOverlappingBoundingBox(100, 100, 200, 200).isEmpty());
+        assertTrue(new BoundedVolumeHierarchy().findOverlappingBoundingBox(0, 0, 10, 10).isEmpty());
+    }
+
+    @Test
+    void testRayWithOverlappingBoxes() {
+        Triangle diagonal = tri(0, 0, 100, 100, 100, 99), small = tri(10, 50, 14, 50, 12, 54);
+        bvh.buildBVH(List.of(diagonal, small));
+        assertEquals(small, bvh.intersectRay(pt(0, 52), new Vector2D(1, 0)));
+        assertEquals(diagonal, bvh.intersectRay(pt(200, 52), new Vector2D(-1, 0)));
+    }
+
+    @Test
+    void testVisualizationBlockedByEdgeCrossing() {
+        bvh.buildBVH(List.of(tri(12, -40, 13, -40, 12, 40)));
+        Visualization v = new Visualization();
+        v.setBoundingVolumeHierarchy(bvh);
+        assertFalse(v.moveSquare('d'), "edge crossing must block the move");
+        assertTrue(v.moveSquare('a'));
+        assertTrue(v.moveSquare('d'));
+        assertFalse(v.moveSquare('d'));
+    }
+
+    @Test
+    void testRayRejectsBadInput() {
+        bvh.buildBVH(figure);
+        assertNull(bvh.intersectRay(pt(Double.NaN, 0), new Vector2D(1, 0)), "NaN origin");
+        assertNull(bvh.intersectRay(pt(Double.POSITIVE_INFINITY, 0), new Vector2D(1, 0)), "infinite origin");
+        assertNull(bvh.intersectRay(pt(0, 0), new Vector2D(Double.POSITIVE_INFINITY, 0)), "infinite direction");
+        assertNull(bvh.intersectRay(pt(0, 0), new Vector2D(Double.NaN, 1)), "NaN direction");
+        assertThrows(IllegalArgumentException.class, () -> new Vector2D(0, 0));
+    }
 }
